@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: safeway-db
+    environment:
+      POSTGRES_USER: safeway
+      POSTGRES_PASSWORD: safeway
+      POSTGRES_DB: safeway
+    ports:
+      - "5432:5432"
+    volumes:
+      - safeway_data:/var/lib/postgresql/data
+
+volumes:
+  safeway_data:
