@@ -1,10 +1,8 @@
 const jwt = require("jsonwebtoken")
 
-// Express middleware: reads "Authorization: Bearer <token>", verifies it
-// with the JWT secret, and attaches the decoded payload to req.user.
-// Any route that uses this middleware runs `next()` only for valid tokens;
-// otherwise it rejects with 401 before the route handler ever runs.
 
+// Verifies the Bearer JWT token and attaches the decoded user data to req.user.
+// Invalid or missing tokens send 401
 function requireAuth(req, res, next) {
     const header = req.headers.authorization;
     
