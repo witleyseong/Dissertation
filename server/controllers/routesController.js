@@ -23,7 +23,8 @@ async function getExposure(req, res) {
         });
     }
 
-    // Validates that each point is a finite [lng, lat] pair within valid coordinate ranges.  const hasInvalidPoint = coordinates.some(
+    // Validates that each point is a finite [lng, lat] pair within valid coordinate ranges.
+    const hasInvalidPoint = coordinates.some(
     (point) =>
         !Array.isArray(point) ||
         point.length !== 2 ||
@@ -40,7 +41,8 @@ async function getExposure(req, res) {
         });
     }
 
-    // Validates the optional buffer value to ensure it is finite and within an acceptable range.  let buffer = DEFAULT_BUFFER_METERS;
+    // Validates the optional buffer value to ensure it is finite and within an acceptable range.
+    let buffer = DEFAULT_BUFFER_METERS;
     if (bufferMeters !== undefined) {
         if (
             typeof bufferMeters !== "number" ||

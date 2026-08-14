@@ -1,5 +1,5 @@
 const pool = require("../db")
-const { CRIME_DATA_EARLIEST_MONTH, CRIME_DATA_EARLIEST_MONTH, CRIME_DATA_LATEST_MONTH } = require("../config/exposureConfig")
+const { CRIME_DATA_EARLIEST_MONTH, CRIME_DATA_LATEST_MONTH } = require("../config/exposureConfig")
 
 // Caches the database row count so frequent health checks do not repeatedly
 // run an expensive COUNT(*) query over the full dataset.

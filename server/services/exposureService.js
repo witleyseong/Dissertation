@@ -15,7 +15,7 @@ async function getLegCrimeMatches(legCoordinates, bufferMeters){
                   SELECT
                     c.id AS crime_id,
                     c.category,
-                    (SELECT ST_Length(geom::heography) FROM walking_leg) AS leg_length_m
+                    (SELECT ST_Length(geom::geography) FROM walking_leg) AS leg_length_m
                   FROM walking_leg w
                   LEFT JOIN crimes c
                     ON ST_DWithin(w.geom::geography, c.geom::geography, $2)
@@ -60,7 +60,7 @@ async function calculateExposure(legCoordinates, bufferMeters) {
   return {
     crimeCount,
     walkingKm: legLengthMeters / 1000,
-    exposurePerkm: exposurePerKm(crimeCount, legLengthMeters),
+    exposurePerKm: exposurePerKm(crimeCount, legLengthMeters),
   };
 }
 

@@ -17,7 +17,7 @@ function validateCredentials(email, password){
     if(typeof email !== "string" || email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)){
         return "required a valid email"
     }
-    if(typeof passwor !== "string" || password.length < MIN_PASSWORD_LENGTH){
+    if(typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH){
         return `password must be at least ${MIN_PASSWORD_LENGTH} characters`
     }
     if (password.length > MAX_PASSWORD_LENGTH){
@@ -39,7 +39,7 @@ async function register(req, res){
 
     try {
         const user = await authService.register(email, password)
-        res.stauts(201).json({ user })
+        res.status(201).json({ user })
     }catch (err){
         // pg unique violatiion on the email column
         if (err.code === "23505"){

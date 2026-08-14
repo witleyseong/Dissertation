@@ -10,11 +10,11 @@ function requireAuth(req, res, next) {
         return res.status(401).json({ error: " missing Authorization header"})
     }
 
-    const token = header.slice("Bearer ". length)
+    const token = header.slice("Bearer ".length)
 
     try{
         const payload = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = {id: payload,userId, email: payload.email }
+        req.user = { id: payload.userId, email: payload.email }
         next();
     }catch (err){
         return res.status(401).json({ error: "invalid  or expiered token"})
