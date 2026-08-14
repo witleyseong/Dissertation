@@ -88,7 +88,7 @@ if (require.main === module) {
         console.log(`Server running on http://localhost:${PORT}`);
         const lanAddress = getLanAddress();
         if (lanAddress) {
-            console.log(`On your WiFi network, other devices can reach it at http://${lanAddress}:${PORT}`);
+            console.log(`On WiFi network at http://${lanAddress}:${PORT}`);
         }
     });
 }
