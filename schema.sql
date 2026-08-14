@@ -1,7 +1,5 @@
--- ============================================================
--- SafeWay London 
--- PostgreSQL + PostGIS. Safe to re-run (drops and recreates).
--- ============================================================
+-- SafeWay London database setup using PostgreSQL and PostGIS.
+-- Safe to re-run because existing database objects are recreated.
 CREATE EXTENSION IF NOT EXISTS postgis;
  
 -- Drop existing tables first. CASCADE clears foreign-key dependencies.
@@ -14,9 +12,9 @@ DROP TABLE IF EXISTS tfl_api_cache       CASCADE;
 DROP TABLE IF EXISTS users               CASCADE;
 DROP TABLE IF EXISTS crimes              CASCADE;
  
--- ------------------------------------------------------------
+
 -- 1. crimes  (no foreign key — matched to legs spatially)
--- ------------------------------------------------------------
+
 CREATE TABLE crimes (
     id                bigserial PRIMARY KEY,
     external_crime_id varchar(120) UNIQUE,   -- data.police.uk persistent_id
@@ -28,16 +26,13 @@ CREATE TABLE crimes (
     geom              geometry(Point, 4326)
 );
 CREATE INDEX crimes_geom_gix ON crimes USING GIST (geom);
--- Separate index on the geography cast: ST_DWithin(a::geography, b::geography, m)
--- does NOT use a plain geometry GiST index — without this, every exposure
--- query falls back to a sequential scan of the whole table (confirmed via
--- EXPLAIN ANALYZE: ~2s/query and full-table Parallel Seq Scan without it,
--- ~0.05-0.5s/query and Bitmap Index Scan with it).
+-- Adds a GiST index for geography-based distance queries, avoiding
+-- full-table scans and significantly improving exposure query performance.
 CREATE INDEX crimes_geog_gix ON crimes USING GIST ((geom::geography));
  
--- ------------------------------------------------------------
+
 -- 2. evaluation_journeys  (no foreign key — fixed test cases)
--- ------------------------------------------------------------
+
 CREATE TABLE evaluation_journeys (
     id               bigserial PRIMARY KEY,
     name             varchar(120),           -- fixture label
@@ -51,29 +46,28 @@ CREATE TABLE evaluation_journeys (
     created_at       timestamptz DEFAULT now()
 );
  
--- ------------------------------------------------------------
--- 3. users  (account layer — Section 1.7.1)
--- ------------------------------------------------------------
+
+-- 3. users  
+
 CREATE TABLE users (
     id            bigserial PRIMARY KEY,
     email         varchar(255) NOT NULL,
-    password_hash text         NOT NULL,     -- bcrypt digest only (FR-02, NFR-01)
+    password_hash text         NOT NULL,     -- bcrypt
     plan          varchar(20)  NOT NULL DEFAULT 'free',
     created_at    timestamptz  NOT NULL DEFAULT now()
 );
 -- Uniqueness on the lower-cased address, so Ana@x.com and ana@x.com
--- cannot both register (FR-01).
+
 CREATE UNIQUE INDEX users_email_unique ON users (LOWER(email));
  
--- ------------------------------------------------------------
--- 4. journey_requests  (FK -> users, FK -> evaluation_journeys)
--- ------------------------------------------------------------
+
+-- 4. journey_requests  
 CREATE TABLE journey_requests (
     id                    bigserial PRIMARY KEY,
     user_id               bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     origin_text           text,               -- raw user input
     destination_text      text,               -- raw user input
-    origin_lat            float8,             -- resolved WGS84
+    origin_lat            float8,             
     origin_lng            float8,
     dest_lat              float8,
     dest_lng              float8,
@@ -83,9 +77,8 @@ CREATE TABLE journey_requests (
 );
 CREATE INDEX journey_requests_user_idx ON journey_requests (user_id);
  
--- ------------------------------------------------------------
 -- 5. route_options  (FK -> journey_requests)
--- ------------------------------------------------------------
+
 CREATE TABLE route_options (
     id                       bigserial PRIMARY KEY,
     journey_request_id       bigint NOT NULL REFERENCES journey_requests(id) ON DELETE CASCADE,
@@ -99,15 +92,14 @@ CREATE TABLE route_options (
     created_at               timestamptz DEFAULT now()
 );
 CREATE INDEX route_options_jr_idx ON route_options (journey_request_id);
- 
--- ------------------------------------------------------------
+
 -- 6. route_legs  (FK -> route_options)
--- ------------------------------------------------------------
+
 CREATE TABLE route_legs (
     id               bigserial PRIMARY KEY,
     route_option_id  bigint NOT NULL REFERENCES route_options(id) ON DELETE CASCADE,
     leg_order        int,                     -- 0-based sequence
-    mode             varchar(20),             -- walking|tube|bus|rail|...
+    mode             varchar(20),             -- walking|tube|bus|rail|..
     duration_seconds int,
     distance_m       float8,
     instruction      text,                    -- turn-by-turn text
@@ -116,9 +108,8 @@ CREATE TABLE route_legs (
 CREATE INDEX route_legs_ro_idx   ON route_legs (route_option_id);
 CREATE INDEX route_legs_geom_gix ON route_legs USING GIST (geom);
  
--- ------------------------------------------------------------
 -- 7. route_scores  (FK -> route_options, one score per route)
--- ------------------------------------------------------------
+
 CREATE TABLE route_scores (
     id                        bigserial PRIMARY KEY,
     route_option_id           bigint NOT NULL UNIQUE REFERENCES route_options(id) ON DELETE CASCADE,
@@ -130,9 +121,8 @@ CREATE TABLE route_scores (
     calculated_at             timestamptz DEFAULT now()
 );
  
--- ------------------------------------------------------------
 -- 8. tfl_api_cache  (no foreign key — infrastructure)
--- ------------------------------------------------------------
+
 CREATE TABLE tfl_api_cache (
     id           bigserial PRIMARY KEY,
     request_hash varchar(64) UNIQUE,           -- sha256 of normalised params

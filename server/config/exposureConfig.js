@@ -34,6 +34,7 @@ const EXPOSURE_SCORE_HALF_LIFE_PER_KM = EXPOSURE_LOWER_MAX_PER_KM;
 
 
 // The app measures historical recorded-crime exposure.
+const RISK_TO_EXPOSURE_LEVEL = Object.freeze({
     safe:"lower",
     low:"lower",
     moderate:"moderate",

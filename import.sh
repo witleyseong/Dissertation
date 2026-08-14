@@ -1,12 +1,5 @@
-#!/bin/bash
-# ============================================================
-# SafeWay London — crime import (v2, wider study area)
-# Loads all data.police.uk street-level CSVs into the crimes
-# table, filtered to a bounding box that fully contains TfL
-# Zones 1-2 (with margin), and builds the geom column.
-# Safe to re-run: it clears the crimes table first.
-# Run inside the container: docker exec safeway-db bash /import.sh
-# ============================================================
+# Imports street-level crime data for the SafeWay London study area,
+# rebuilds spatial geometry, and safely replaces any existing crime records.
 
 DB="psql -U safeway -d safeway"
 
