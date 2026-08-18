@@ -1,4 +1,4 @@
-const { planJourneys, TflConfigError, TflTimeoutError, TflUpstreamError } = require("../services/journeyService");
+const { planJourneysForUser, getJourneyHistoryForUser, TflConfigError, TflTimeoutError, TflUpstreamError } = require("../services/journeyService");
 
 const MAX_ADDRESS_LENGTH = 200;
 
@@ -17,11 +17,11 @@ async function getJourneys(req, res) {
     }
 
     try {
-        const journeys = await planJourneys(from.trim(), to.trim());
+        const { journeyRequestId, journeys } = await planJourneysForUser(req.user.id, from.trim(), to.trim());
         if (journeys.length === 0) {
-            return res.json({ journeys: [], message: "No routes found for these locations." });
+            return res.json({ journeyRequestId, journeys: [], message: "No routes found for these locations." });
         }
-        res.json({ journeys });
+        res.json({ journeyRequestId, journeys });
     } catch (err) {
         // Logs detailed errors server-side while returning only a short,
         // predictable error message to the client.
@@ -40,4 +40,15 @@ async function getJourneys(req, res) {
     }
 }
 
-module.exports = { getJourneys };
+// GET /api/journey/history
+async function getHistory(req, res) {
+    try {
+        const history = await getJourneyHistoryForUser(req.user.id);
+        res.json({ history });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "failed to load journey history" });
+    }
+}
+
+module.exports = { getJourneys, getHistory };

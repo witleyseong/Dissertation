@@ -1,3 +1,4 @@
+const pool = require("../db");
 const { getLegCrimeMatches, exposurePerKm } = require("./exposureService");
 const {
     WALK_BUFFER_METERS,
@@ -276,4 +277,187 @@ async function planJourneys(from, to) {
     return journeys;
 }
 
-module.exports = { planJourneys, TflConfigError, TflTimeoutError, TflUpstreamError };
+// Persists each returned journey as a route_option, its legs as route_legs,
+// and (when walking exposure was measured) a route_scores row, all inside a
+// single transaction so a partially written journey never lingers in the DB.
+async function persistJourneys(journeyRequestId, journeys) {
+    const fastestJourney = journeys.find((j) => j.isFastest);
+    const fastestExposurePerKm = fastestJourney ? fastestJourney.exposurePerKm : null;
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        for (const journey of journeys) {
+            const tflRouteIndex = Number(journey.id.replace("journey-", ""));
+            const summary = journey.legs.map((leg) => leg.mode).join(" → ");
+            const walkingLegCount = journey.legs.filter((leg) => leg.isWalking).length;
+
+            const { rows: routeRows } = await client.query(
+                `INSERT INTO route_options
+                    (journey_request_id, tfl_route_index, summary, total_duration_seconds,
+                     total_walking_distance_m, walking_leg_count, is_fastest, is_recommended)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                 RETURNING id`,
+                [
+                    journeyRequestId,
+                    tflRouteIndex,
+                    summary,
+                    journey.duration,
+                    journey.totalWalkingKm * 1000,
+                    walkingLegCount,
+                    journey.isFastest,
+                    journey.isLowestExposure,
+                ]
+            );
+            const routeOptionId = routeRows[0].id;
+
+            for (let i = 0; i < journey.legs.length; i++) {
+                const leg = journey.legs[i];
+                const geojson = leg.lineString && leg.lineString.length >= 2
+                    ? JSON.stringify({ type: "LineString", coordinates: leg.lineString })
+                    : null;
+
+                await client.query(
+                    `INSERT INTO route_legs
+                        (route_option_id, leg_order, mode, duration_seconds, distance_m, instruction, geom)
+                     VALUES ($1,$2,$3,$4,$5,$6, ST_SetSRID(ST_GeomFromGeoJSON($7), 4326))`,
+                    [
+                        routeOptionId,
+                        i,
+                        leg.modeId,
+                        leg.duration,
+                        leg.walkingKm != null ? leg.walkingKm * 1000 : null,
+                        leg.routeName,
+                        geojson,
+                    ]
+                );
+            }
+
+            if (journey.totalWalkingKm > 0) {
+                const exposureReductionPct = fastestExposurePerKm
+                    ? ((fastestExposurePerKm - journey.exposurePerKm) / fastestExposurePerKm) * 100
+                    : null;
+
+                await client.query(
+                    `INSERT INTO route_scores
+                        (route_option_id, buffer_distance_m, crime_count, total_walking_distance_km,
+                         exposure_per_km, exposure_reduction_pct)
+                     VALUES ($1,$2,$3,$4,$5,$6)`,
+                    [
+                        routeOptionId,
+                        WALK_BUFFER_METERS,
+                        journey.totalCrimeExposure,
+                        journey.totalWalkingKm,
+                        journey.exposurePerKm,
+                        exposureReductionPct,
+                    ]
+                );
+            }
+        }
+
+        await client.query(`UPDATE journey_requests SET status = 'complete' WHERE id = $1`, [journeyRequestId]);
+        await client.query("COMMIT");
+    } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+// Wraps planJourneys with persistence: logs the request against the user
+// before calling TfL, then saves every returned route so it can be shown
+// as history later. A TfL failure still leaves a row behind (status='error')
+// instead of silently vanishing.
+async function planJourneysForUser(userId, from, to) {
+    const { rows } = await pool.query(
+        `INSERT INTO journey_requests (user_id, origin_text, destination_text, status)
+         VALUES ($1, $2, $3, 'pending')
+         RETURNING id`,
+        [userId, from, to]
+    );
+    const journeyRequestId = rows[0].id;
+
+    let journeys;
+    try {
+        journeys = await planJourneys(from, to);
+    } catch (err) {
+        await pool.query(`UPDATE journey_requests SET status = 'error' WHERE id = $1`, [journeyRequestId]);
+        throw err;
+    }
+
+    if (journeys.length > 0) {
+        await persistJourneys(journeyRequestId, journeys);
+    } else {
+        await pool.query(`UPDATE journey_requests SET status = 'complete' WHERE id = $1`, [journeyRequestId]);
+    }
+
+    return { journeyRequestId, journeys };
+}
+
+// Lists the user's past journey requests
+async function getJourneyHistoryForUser(userId, limit = 20) {
+    const { rows: requests } = await pool.query(
+        `SELECT id, origin_text, destination_text, status, requested_at
+         FROM journey_requests
+         WHERE user_id = $1
+         ORDER BY requested_at DESC
+         LIMIT $2`,
+        [userId, limit]
+    );
+
+    if (requests.length === 0) return [];
+
+    const requestIds = requests.map((r) => r.id);
+    const { rows: routes } = await pool.query(
+        `SELECT
+            ro.journey_request_id, ro.id AS route_option_id, ro.tfl_route_index,
+            ro.summary, ro.total_duration_seconds, ro.total_walking_distance_m,
+            ro.walking_leg_count, ro.is_fastest, ro.is_recommended,
+            rs.crime_count, rs.total_walking_distance_km, rs.exposure_per_km, rs.exposure_reduction_pct
+         FROM route_options ro
+         LEFT JOIN route_scores rs ON rs.route_option_id = ro.id
+         WHERE ro.journey_request_id = ANY($1)
+         ORDER BY ro.journey_request_id, ro.tfl_route_index`,
+        [requestIds]
+    );
+
+    const routesByRequest = new Map();
+    for (const route of routes) {
+        const list = routesByRequest.get(route.journey_request_id) || [];
+        list.push({
+            routeOptionId: route.route_option_id,
+            tflRouteIndex: route.tfl_route_index,
+            summary: route.summary,
+            totalDurationSeconds: route.total_duration_seconds,
+            totalWalkingDistanceM: route.total_walking_distance_m,
+            walkingLegCount: route.walking_leg_count,
+            isFastest: route.is_fastest,
+            isRecommended: route.is_recommended,
+            crimeCount: route.crime_count,
+            totalWalkingDistanceKm: route.total_walking_distance_km,
+            exposurePerKm: route.exposure_per_km,
+            exposureReductionPct: route.exposure_reduction_pct,
+        });
+        routesByRequest.set(route.journey_request_id, list);
+    }
+
+    return requests.map((r) => ({
+        journeyRequestId: r.id,
+        originText: r.origin_text,
+        destinationText: r.destination_text,
+        status: r.status,
+        requestedAt: r.requested_at,
+        routes: routesByRequest.get(r.id) || [],
+    }));
+}
+
+module.exports = {
+    planJourneys,
+    planJourneysForUser,
+    getJourneyHistoryForUser,
+    TflConfigError,
+    TflTimeoutError,
+    TflUpstreamError,
+};
