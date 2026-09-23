@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "self:">
+   </FileRef>
+   <FileRef
+      location = "group:ViewsHomeInputView.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ViewsHomeInputView 2.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ViewsHomeInputView 3.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ViewsHomeInputView 4.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ViewsHomeInputView 5.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ViewsHomeInputView 6.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ViewsHomeInputView 7.swift">
+   </FileRef>
+</Workspace>

@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: safeway-db
+    environment:
+      POSTGRES_USER: safeway
+      POSTGRES_PASSWORD: safeway
+      POSTGRES_DB: safeway
+    ports:
+      - "5432:5432"
+    volumes:
+      - safeway_data:/var/lib/postgresql/data
+      # these run only the first time, when the database is empty
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # loads the crime csv files (takes a few minutes)
+      - ./db/load-crimes.sh:/docker-entrypoint-initdb.d/02-load-crimes.sh:ro
+      - ./db/crime_db:/crime_db:ro
+
+volumes:
+  safeway_data:

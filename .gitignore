@@ -1,4 +1,15 @@
+# Backend
 node_modules/
 .env
-db/crime_db/
+Backend/db/crime_db/
 crime_db.zip
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
